@@ -1,0 +1,138 @@
+/* Standard NerdFont */
+@font-face {
+  font-family: "FiraPlexCode"; font-style: normal; font-weight: 400;
+  src: url("../build/stage2/NerdFont/FiraPlexCodeNerdFont-Regular.ttf") format("truetype");
+}
+@font-face {
+  font-family: "FiraPlexCode"; font-style: normal; font-weight: 700;
+  src: url("../build/stage2/NerdFont/FiraPlexCodeNerdFont-Bold.ttf") format("truetype");
+}
+@font-face {
+  font-family: "FiraPlexCode"; font-style: italic; font-weight: 400;
+  src: url("../build/stage2/NerdFont/FiraPlexCodeNerdFont-Italic.ttf") format("truetype");
+}
+@font-face {
+  font-family: "FiraPlexCode"; font-style: italic; font-weight: 700;
+  src: url("../build/stage2/NerdFont/FiraPlexCodeNerdFont-BoldItalic.ttf") format("truetype");
+}
+
+/* Mono */
+@font-face {
+  font-family: "FiraPlexCode Mono"; font-style: normal; font-weight: 400;
+  src: url("../build/stage2/NerdFontMono/FiraPlexCodeNerdFontMono-Regular.ttf") format("truetype");
+}
+@font-face {
+  font-family: "FiraPlexCode Mono"; font-style: normal; font-weight: 700;
+  src: url("../build/stage2/NerdFontMono/FiraPlexCodeNerdFontMono-Bold.ttf") format("truetype");
+}
+@font-face {
+  font-family: "FiraPlexCode Mono"; font-style: italic; font-weight: 400;
+  src: url("../build/stage2/NerdFontMono/FiraPlexCodeNerdFontMono-Italic.ttf") format("truetype");
+}
+@font-face {
+  font-family: "FiraPlexCode Mono"; font-style: italic; font-weight: 700;
+  src: url("../build/stage2/NerdFontMono/FiraPlexCodeNerdFontMono-BoldItalic.ttf") format("truetype");
+}
+
+/* Propo */
+@font-face {
+  font-family: "FiraPlexCode Propo"; font-style: normal; font-weight: 400;
+  src: url("../build/stage2/NerdFontPropo/FiraPlexCodeNerdFontPropo-Regular.ttf") format("truetype");
+}
+@font-face {
+  font-family: "FiraPlexCode Propo"; font-style: normal; font-weight: 700;
+  src: url("../build/stage2/NerdFontPropo/FiraPlexCodeNerdFontPropo-Bold.ttf") format("truetype");
+}
+@font-face {
+  font-family: "FiraPlexCode Propo"; font-style: italic; font-weight: 400;
+  src: url("../build/stage2/NerdFontPropo/FiraPlexCodeNerdFontPropo-Italic.ttf") format("truetype");
+}
+@font-face {
+  font-family: "FiraPlexCode Propo"; font-style: italic; font-weight: 700;
+  src: url("../build/stage2/NerdFontPropo/FiraPlexCodeNerdFontPropo-BoldItalic.ttf") format("truetype");
+}
+
+:root {
+  color-scheme: light dark;
+  --bg: #fafafa;
+  --fg: #1a1a1a;
+  --muted: #666;
+  --border: #e0e0e0;
+  --code-bg: #f3f3f3;
+  --comment: #6a737d;
+  --keyword: #cf222e;
+  --string: #0a3069;
+  --number: #953800;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a1a;
+    --fg: #e8e8e8;
+    --muted: #999;
+    --border: #333;
+    --code-bg: #242424;
+    --comment: #8b949e;
+    --keyword: #ff7b72;
+    --string: #a5d6ff;
+    --number: #ffa657;
+  }
+}
+
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5;
+  padding: 2rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+h1 { font-size: 1.6rem; margin: 0 0 0.5rem; }
+h2 {
+  font-size: 1.15rem;
+  margin: 2rem 0 0.5rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.25rem;
+}
+.meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
+.controls {
+  display: flex; gap: 1rem; flex-wrap: wrap;
+  background: var(--code-bg);
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  align-items: center;
+  font-size: 0.9rem;
+}
+.controls label { display: flex; gap: 0.4rem; align-items: center; }
+
+pre.sample, .sample {
+  font-family: var(--ff, "FiraPlexCode"), ui-monospace, monospace;
+  font-size: var(--fs, 15px);
+  font-feature-settings: var(--ff-feat, "calt" 1, "liga" 1);
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  overflow-x: auto;
+  margin: 0.5rem 0 1.25rem;
+}
+
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+@media (max-width: 800px) { .row { grid-template-columns: 1fr; } }
+
+.tok-c { color: var(--comment); font-style: italic; }
+.tok-k { color: var(--keyword); }
+.tok-s { color: var(--string); }
+.tok-n { color: var(--number); }
+
+.icons {
+  font-size: 1.6rem;
+  line-height: 2;
+  background: var(--code-bg);
+  padding: 1rem;
+  border-radius: 6px;
+  word-spacing: 0.4rem;
+}
+small.note { color: var(--muted); }

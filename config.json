@@ -1,0 +1,34 @@
+{
+  "family_name": "FiraPlexCode",
+  "version": "1.000",
+  "vendor_id": "FPLX",
+  "manufacturer": "FiraPlexCode contributors",
+  "designer": "Nikita Prokopov (FiraCode), IBM (Plex Mono), Ryan L McIntyre (Nerd Fonts)",
+  "license_url": "https://github.com/USER/FiraPlexCode",
+  "copyright": "FiraCode (C) The Fira Code Project Authors, OFL-1.1. IBM Plex Mono (C) IBM Corp., OFL-1.1. Nerd Fonts (C) Ryan L McIntyre, MIT.",
+  "trademark": "",
+  "sources": {
+    "firacode_nerd_version": "v3.4.0",
+    "firacode_nerd_url_template": "https://github.com/ryanoasis/nerd-fonts/releases/download/{version}/FiraCode.zip",
+    "ibm_plex_version": "v1.1.0",
+    "ibm_plex_url_template": "https://github.com/IBM/plex/releases/download/{version}/TrueType.zip",
+    "ibm_plex_archive_path": "TrueType/IBM-Plex-Mono"
+  },
+  "variants": [
+    {
+      "id": "standard",
+      "suffix": "Nerd Font",
+      "patcher_flags": ["--complete", "--makegroups", "1"]
+    },
+    {
+      "id": "mono",
+      "suffix": "Nerd Font Mono",
+      "patcher_flags": ["--complete", "--mono", "--makegroups", "1"]
+    },
+    {
+      "id": "propo",
+      "suffix": "Nerd Font Propo",
+      "patcher_flags": ["--variable-width-glyphs", "--makegroups", "1"]
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+[project]
+name = "firaplexcode"
+version = "1.0.0"
+description = "Build pipeline that merges FiraCode Nerd Font with IBM Plex Mono italics into a coherent 4-style family."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "FiraPlexCode contributors" },
+]
+dependencies = [
+    "fonttools>=4.50.0",
+    "brotli>=1.1.0",
+    "requests>=2.31.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/USER/FiraPlexCode"
+Issues   = "https://github.com/USER/FiraPlexCode/issues"
+
+# This project is not a redistributable Python package; uv treats it as a
+# workspace whose only purpose is to pin the build-tool environment.
+# Scripts are invoked directly via `uv run python scripts/<name>.py`.
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "pillow>=12.2.0",
+    "ruff>=0.14.0",
+]
+
+# ---------------------------------------------------------------------------
+# ruff: format + lint configuration.
+#
+# Run with:
+#   uv run ruff format scripts/   # format
+#   uv run ruff check  scripts/   # lint
+#   uv run ruff check --fix scripts/   # auto-fix safe issues
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["scripts"]
+
+[tool.ruff.lint]
+# Curated rule set: pyflakes (F), pycodestyle (E/W), isort (I), pyupgrade (UP),
+# bugbear (B), comprehensions (C4), simplify (SIM), pep8-naming (N).
+select = ["F", "E", "W", "I", "UP", "B", "C4", "SIM", "N"]
+ignore = [
+    "E501",  # line length is enforced by formatter, not lint
+    "N802",  # font code uses fontTools method names like getName, setName
+    "N803",  # ditto for argument names mirroring fontTools
+    "N806",  # variable names like UPM, PPEM are conventional in font code
+    "SIM102",  # nested ifs are clearer than chained `and` in style logic
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Helpers that intentionally re-export logging primitives.
+"scripts/_common.py" = ["F401"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true

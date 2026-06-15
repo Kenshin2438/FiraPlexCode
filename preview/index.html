@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FiraPlexCode preview</title>
+<link rel="stylesheet" href="preview.css">
+</head>
+<body>
+
+<h1>FiraPlexCode preview</h1>
+<p class="meta">
+  Loaded directly from <code>../build/stage2/</code> via @font-face -
+  no system install needed. Italics use IBM Plex Mono; regular/bold come
+  from FiraCode Nerd Font.
+</p>
+
+<div class="controls">
+  <label>family
+    <select id="family">
+      <option value="FiraPlexCode" selected>FiraPlexCode (NerdFont)</option>
+      <option value="FiraPlexCode Mono">FiraPlexCode Mono</option>
+      <option value="FiraPlexCode Propo">FiraPlexCode Propo</option>
+    </select>
+  </label>
+  <label>size
+    <select id="size">
+      <option value="13">13</option>
+      <option value="14">14</option>
+      <option value="15" selected>15</option>
+      <option value="16">16</option>
+      <option value="18">18</option>
+      <option value="22">22</option>
+    </select>
+  </label>
+  <label><input type="checkbox" id="liga" checked> ligatures</label>
+</div>
+
+<h2>Code sample (mixed regular / italic / bold)</h2>
+<pre class="sample"><span class="tok-c">// Async data pipeline with arrow ligatures and fancy operators</span>
+<span class="tok-k">import</span> { fetchUser, type User } <span class="tok-k">from</span> <span class="tok-s">"./api"</span>;
+
+<span class="tok-k">async function</span> main(ids: <span class="tok-k">number</span>[]): <span class="tok-k">Promise</span>&lt;User[]&gt; {
+  <span class="tok-c">/* Italic block: comments are styled by IBM Plex Mono Italic.
+     Look at how f, a, r, k, x flow differently from upright. */</span>
+  <span class="tok-k">const</span> users = <span class="tok-k">await</span> Promise.all(ids.map(<span class="tok-k">async</span> id =&gt; {
+    <span class="tok-k">const</span> u = <span class="tok-k">await</span> fetchUser(id);
+    <span class="tok-k">return</span> u ?? { id, name: <span class="tok-s">"unknown"</span> };
+  }));
+  <span class="tok-k">return</span> users.filter(u =&gt; u.id !== <span class="tok-n">0</span> &amp;&amp; u.id &lt;= <span class="tok-n">9999</span>);
+}
+
+<span class="tok-c">// Ligatures to spot: =&gt; -&gt; &lt;= &gt;= == === != !== &amp;&amp; || ?? ?. /* */ //</span>
+<span class="tok-k">const</span> ok = (<span class="tok-n">0xFF</span> &amp;&amp; <span class="tok-n">0b1010</span>) === <span class="tok-n">10</span>;
+</pre>
+
+<h2>Italic showcase</h2>
+<div class="row">
+  <pre class="sample"><em>The quick brown fox jumps over the lazy dog.
+1234567890 !@#$%^&amp;*()_+ &lt;=&gt; -&gt; &lt;-
+function flock(birds) { return birds.map(b =&gt; b.fly()); }
+"hello" + 'world' === `hello${world}` ?? null</em></pre>
+  <pre class="sample"><strong><em>The quick brown fox jumps over the lazy dog.
+1234567890 !@#$%^&amp;*()_+ &lt;=&gt; -&gt; &lt;-
+function flock(birds) { return birds.map(b =&gt; b.fly()); }
+"hello" + 'world' === `hello${world}` ?? null</em></strong></pre>
+</div>
+
+<h2>Nerd Font icons (PUA glyphs)</h2>
+<p><small class="note">If you see boxes/tofu, the icon range is broken. If you see icons, Stage 2 patching worked. All codepoints below are verified to exist in every variant/style.</small></p>
+<div class="icons sample">
+  &#xe61e; &#xe62b; &#xe70c; &#xe718; &#xe73c; &#xe7a2; &#xe7a8; &#xe7c4; &#xea63; &#xea84;
+  &#xeb29; &#xf02d; &#xf07b; &#xf0c5; &#xf0e0; &#xf0eb; &#xf0f3; &#xf179; &#xf17a; &#xf17b;
+  &#xf17c; &#xf1bc; &#xf1c0; &#xf1d3; &#xf21b; &#xf268; &#xf270; &#xf308; &#xf31b; &#xf41b;
+  &#xf43a; &#xf469; &#xf471; &#xf487;
+</div>
+
+<h2>Italic icons (Stage 2 verification)</h2>
+<p><small class="note">These are the same icons rendered in italic - they should appear thanks to Stage 2 patching of the italic styles.</small></p>
+<div class="icons sample"><em>
+  &#xe61e; &#xe62b; &#xe70c; &#xe718; &#xe7a8; &#xea63; &#xeb29; &#xf02d; &#xf0c5; &#xf17a;
+  &#xf268; &#xf308; &#xf41b; &#xf469; &#xf487;
+</em></div>
+
+<h2>Glyph reference</h2>
+<pre class="sample">abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ
+0123456789  l1iI Oo0  rn m
+!"#$%&amp;'()*+,-./:;&lt;=&gt;?@[\]^_`{|}~
+
+The quick brown fox jumps over the lazy dog.
+THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG.</pre>
+
+<script src="preview.js"></script>
+</body>
+</html>
