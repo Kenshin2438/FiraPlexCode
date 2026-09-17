@@ -86,6 +86,6 @@ config.font = wezterm.font_with_fallback {
 |------------------------|---------------------------------------------------|
 | Regular / Bold letters | Pure FiraCode Nerd Font - all ligatures intact    |
 | Italic / BoldItalic    | IBM Plex Mono true italic - notice `f a r k x` flowing |
-| `=>` `<=` `==` `!=`    | Should render as ligatures (FiraCode behaviour)   |
+| `=>` `<=` `==` `!=`    | Render as ligatures in ALL four styles - FiraCode's `calt` rules are grafted into the italics in Stage 1, matching the italic letters to upright ligature glyphs |
 | Icon row               | Nerd Font PUA glyphs across all four styles       |
 | Italic icon row        | Stage 2 successfully patched icons into italics   |

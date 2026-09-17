@@ -8,10 +8,11 @@ runs the official ``font-patcher`` (FontForge) over only those two files,
 generating the variant-correct icon layout, then copies the four files into
 ``build/stage2/<SuffixCompact>/`` with their final FiraPlexCode names.
 
-Per-variant patcher flags:
+Per-variant patcher flags come from ``config.json``
+(``variants[*].patcher_flags``):
     * standard : ``--complete``                          (icons at original widths)
     * mono     : ``--complete --mono``                   (force single-cell width)
-    * propo    : ``--complete --mono``                   (see VARIANT_FLAGS note)
+    * propo    : ``--complete --mono``                   (see patcher flags note)
 
 Common flags:
     ``--makegroups 1`` -- modern RIBBI grouping in Nerd Font naming.
@@ -47,34 +48,32 @@ from _common import (
     STYLES,
     load_config,
     make_logger,
+    resolve_variants,
     set_name_records,
     variant_compact_suffix,
+    variant_ids,
 )
 
 log = make_logger("patch")
 
 # ---------------------------------------------------------------------------
-# Patcher flag tables
+# Patcher flags
 # ---------------------------------------------------------------------------
 
-# NOTE: ``--complete`` is mutually exclusive with ``--variable-width-glyphs``
-# in font-patcher (the latter implies its own glyph-set selection). See
-# ryanoasis/nerd-fonts ``font-patcher --help``.
+# Per-variant flags live in ``config.json`` (``variants[*].patcher_flags``) so
+# builds can be tuned without touching code. NOTE: ``--complete`` is mutually
+# exclusive with ``--variable-width-glyphs`` in font-patcher (the latter
+# implies its own glyph-set selection). See ryanoasis/nerd-fonts
+# ``font-patcher --help``.
 #
 # For propo italic specifically: the italic source (IBM Plex Mono Italic) is
 # monospace, not proportional. There is no proportional Plex italic. Using
 # ``--variable-width-glyphs`` alone yields only ~1600 cmap entries and drops
 # the entire supplementary PUA range (U+F0000-U+FFFFD), making the italic
-# visibly icon-poor compared to its Regular sibling. So we patch propo italic
-# with the same ``--complete --mono`` flags as the mono variant (Plex italic
-# IS monospace), giving it the full ~12k icon set. The Regular/Bold halves
-# of propo are still the upstream proportional NF.
-VARIANT_FLAGS: dict[str, list[str]] = {
-    "standard": ["--complete"],
-    "mono": ["--complete", "--mono"],
-    "propo": ["--complete", "--mono"],
-}
-
+# visibly icon-poor compared to its Regular sibling. So config patches propo
+# italic with the same ``--complete --mono`` flags as the mono variant (Plex
+# italic IS monospace), giving it the full ~12k icon set. The Regular/Bold
+# halves of propo are still the upstream proportional NF.
 COMMON_FLAGS: list[str] = ["--makegroups", "1", "--careful", "--no-progressbars"]
 
 
@@ -215,8 +214,7 @@ def rewrite_variant_family(
 
 
 def patch_variant(
-    variant_id: str,
-    suffix: str,
+    variant: dict,
     stage1_dir: Path,
     stage2_dir: Path,
     family: str,
@@ -227,6 +225,9 @@ def patch_variant(
     A ``try/finally`` wraps the temp directory so a patcher crash cannot
     leave ``_tmp_patch`` behind on disk between runs.
     """
+    variant_id = variant["id"]
+    suffix = variant["suffix"]
+    patcher_flags = variant["patcher_flags"]
     log(f"=== variant: {variant_id} ({suffix}) ===")
     src_dir = stage1_dir / variant_id
     final_dir = stage2_dir / variant_compact_suffix(suffix)
@@ -260,7 +261,7 @@ def patch_variant(
                 raise FileNotFoundError(src)
             style_tmp = tmp_root / style
             style_tmp.mkdir(parents=True, exist_ok=True)
-            produced = run_patcher(patcher, src, style_tmp, VARIANT_FLAGS[variant_id])
+            produced = run_patcher(patcher, src, style_tmp, patcher_flags)
             dst = final_dir / f"{family_compact}-{style}.ttf"
             rewrite_variant_family(produced, dst, full_family, style)
     finally:
@@ -268,10 +269,13 @@ def patch_variant(
 
 
 def main() -> int:
+    cfg = load_config()
+    ids = variant_ids(cfg)
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--variant",
-        choices=["standard", "mono", "propo", "all"],
+        choices=[*ids, "all"],
         default="all",
     )
     parser.add_argument("--patcher", help="Path to nerd-fonts font-patcher script.")
@@ -287,7 +291,6 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    cfg = load_config()
     family = cfg["family_name"]
 
     patcher = find_patcher(args.patcher)
@@ -296,13 +299,11 @@ def main() -> int:
     stage1_dir = Path(args.stage1)
     stage2_dir = Path(args.out)
 
-    chosen = ["standard", "mono", "propo"] if args.variant == "all" else [args.variant]
-    suffix_map = {v["id"]: v["suffix"] for v in cfg["variants"]}
+    chosen = resolve_variants(cfg, args.variant)
 
-    for variant_id in chosen:
+    for variant in chosen:
         patch_variant(
-            variant_id,
-            suffix_map[variant_id],
+            variant,
             stage1_dir,
             stage2_dir,
             family,

@@ -18,17 +18,20 @@
     {
       "id": "standard",
       "suffix": "Nerd Font",
-      "patcher_flags": ["--complete", "--makegroups", "1"]
+      "fixed_pitch": true,
+      "patcher_flags": ["--complete"]
     },
     {
       "id": "mono",
       "suffix": "Nerd Font Mono",
-      "patcher_flags": ["--complete", "--mono", "--makegroups", "1"]
+      "fixed_pitch": true,
+      "patcher_flags": ["--complete", "--mono"]
     },
     {
       "id": "propo",
       "suffix": "Nerd Font Propo",
-      "patcher_flags": ["--variable-width-glyphs", "--makegroups", "1"]
+      "fixed_pitch": false,
+      "patcher_flags": ["--complete", "--mono"]
     }
   ]
 }

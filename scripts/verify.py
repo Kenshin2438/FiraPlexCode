@@ -6,6 +6,10 @@ Walks ``build/stage2/`` (or a provided directory) and verifies for every TTF:
     * name table has nameID 1, 4, 6, 16, 17 populated for (3,1,0x409).
     * Family name matches expected pattern ``FiraPlexCode <suffix>``.
     * fsSelection / macStyle / italicAngle bits agree with style.
+    * Ligature machinery is present in ALL four styles (GSUB ``calt`` feature
+      plus FiraCode's signature ligature glyphs) - the italic styles get theirs
+      grafted in Stage 1, and this check guards against Stage 2's FontForge
+      pass dropping them.
 
 Exit code 0 on success, 1 on any failure (details printed to stderr). Used as
 a CI gate after Stage 2 so a corrupted build cannot reach packaging.
@@ -29,6 +33,28 @@ from _common import (
 )
 
 log = make_logger("verify")
+
+# Signature glyphs of FiraCode's calt ligature machinery. Present in the
+# upstream Regular/Bold and grafted into the italic styles by Stage 1.
+LIGATURE_MARKER_GLYPHS = ("hyphen_hyphen.liga", "equal_equal.liga")
+
+
+def verify_ligatures(font, errors: list[str]) -> None:
+    """Check that the GSUB ``calt`` ligature machinery survived the pipeline."""
+    if "GSUB" not in font:
+        errors.append("missing GSUB table - ligatures cannot work")
+        return
+    gsub = font["GSUB"].table
+    calt = [fr for fr in gsub.FeatureList.FeatureRecord if fr.FeatureTag == "calt"]
+    if not calt:
+        errors.append("GSUB has no 'calt' feature - ligatures cannot work")
+        return
+    if not any(fr.Feature.LookupListIndex for fr in calt):
+        errors.append("'calt' feature has no lookups")
+    glyph_names = set(font.getGlyphOrder())
+    missing = [g for g in LIGATURE_MARKER_GLYPHS if g not in glyph_names]
+    if missing:
+        errors.append(f"missing ligature glyphs: {', '.join(missing)}")
 
 
 def verify_one(ttf: Path, expected_family_prefix: str) -> list[str]:
@@ -87,6 +113,8 @@ def verify_one(ttf: Path, expected_family_prefix: str) -> list[str]:
         if not is_italic and post.italicAngle != 0:
             errors.append(f"post.italicAngle == {post.italicAngle} for upright")
 
+    verify_ligatures(font, errors)
+
     return errors
 
 
@@ -102,7 +130,7 @@ def main() -> int:
     cfg = load_config()
     family = cfg["family_name"]
 
-    target = Path(args.dir)
+    target = Path(args.dir).resolve()
     ttfs = sorted(target.rglob("*.ttf"))
     if not ttfs:
         log(f"no TTFs found under {target}")

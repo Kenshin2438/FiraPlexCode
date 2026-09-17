@@ -11,6 +11,8 @@ A merged programming font that combines:
 
 The output is a coherent 4-style RIBBI family (`Regular`, `Bold`, `Italic`, `Bold Italic`) that any OS / editor / terminal will recognize as one font. Italic styles are patched with the same Nerd Font icons so terminals, status lines, and prompts keep working when text is rendered in italics.
 
+![FiraPlexCode sample](docs/images/firaplexcode-sample.png)
+
 Three variants are produced, mirroring the upstream Nerd Fonts naming:
 
 | Variant                        | Use it for                                          |
@@ -38,6 +40,7 @@ Pure `fontTools`, no external deps. For each variant it produces 4 TTFs:
 
 - **Regular / Bold**: copied directly from the upstream FiraCode Nerd Font (icons + ligatures preserved), with the `name`, `OS/2`, `head`, and `post` tables rewritten so they belong to the `FiraPlexCode` family.
 - **Italic / Bold Italic**: copied from IBM Plex Mono, scaled from 1000 UPM up to FiraCode Nerd Font's 1950 UPM via `fontTools.ttLib.scaleUpem`, then hmtx-normalized to a 1200-unit monospace cell so the four styles share one coordinate system.
+- **Ligature grafting**: Plex Mono ships without programming ligatures, so FiraCode's `calt` lookup machinery is transplanted into the italic styles — otherwise ligatures like `=>` would silently stop working in italic text such as editor comments. Along with the rules come the glyphs they reference (~1,400: ligature pieces, `.spacer` helpers, and context-referenced alternates). Rules bind to the italic outlines by glyph name, so `f`, `a`, `r` stay Plex-italic while the ligature glyphs themselves keep their upright shapes (arrows and operators are conventionally not slanted). BoldItalic grafts from FiraCode Bold so ligature stroke weight matches.
 
 ### Stage 2 — `scripts/patch_italics.py`
 
@@ -59,7 +62,7 @@ Zips each variant separately plus a combined `FiraPlexCode-all-<version>.zip`, e
 
 ### Verification — `scripts/verify.py`
 
-Sanity checks every produced TTF: name records, fsSelection / macStyle / italicAngle bits, family-name prefix.
+Sanity checks every produced TTF: name records, fsSelection / macStyle / italicAngle bits, family-name prefix, and ligature machinery (GSUB `calt` + marker glyphs present in all four styles).
 
 ## Local build
 
@@ -126,6 +129,12 @@ python -m http.server 8000
 
 The page lets you switch between the three variants, change size, and toggle ligatures. See `preview/README.md` for terminal/editor install snippets.
 
+The README image at the top is generated from the built fonts (requires `uv sync` dev dependencies):
+
+```bash
+uv run python scripts/render_sample_image.py
+```
+
 ## Configuration
 
 `config.json` controls upstream source versions, the family name, and per-variant patcher flags. Pin upstream versions there to keep builds reproducible:
@@ -137,11 +146,19 @@ The page lets you switch between the three variants, change size, and toggle lig
   "sources": {
     "firacode_nerd_version": "v3.4.0",
     "ibm_plex_version": "v1.1.0"
-  }
+  },
+  "variants": [
+    {
+      "id": "mono",
+      "suffix": "Nerd Font Mono",
+      "fixed_pitch": true,
+      "patcher_flags": ["--complete", "--mono"]
+    }
+  ]
 }
 ```
 
-Bump `firacode_nerd_version` / `ibm_plex_version` and re-tag to absorb upstream updates.
+Each variant entry sets the family-name suffix, whether `post.isFixedPitch` is asserted (`false` for the proportional variant), and the `font-patcher` flags Stage 2 applies to its italic styles (`--makegroups 1 --careful` are always added). Bump `firacode_nerd_version` / `ibm_plex_version` and re-tag to absorb upstream updates.
 
 ## Why both Stage 1 _and_ Stage 2?
 

@@ -30,6 +30,10 @@ Key design decisions
       and produce visibly squashed glyphs at small sizes after rescale.
     * Vertical metrics are pinned to FiraCode NF's line box so Italic
       does not look smaller than Regular at the same point size.
+    * Plex Mono ships without programming ligatures, so the italic styles
+      would silently lose FiraCode's signature feature (e.g. in editor
+      comments, which are usually italic). ``graft_ligatures`` transplants
+      FiraCode NF's ``calt`` machinery into the italic fonts.
     * RIBBI 4-member family with nameIDs 1/2 (legacy) + 16/17
       (typographic), and ``fsSelection`` / ``macStyle`` / ``italicAngle``
       bits set explicitly per style.
@@ -38,12 +42,14 @@ Key design decisions
 from __future__ import annotations
 
 import argparse
+import copy
 import os
 import sys
 from pathlib import Path
 
 from fontTools.ttLib import TTFont
 from fontTools.ttLib.scaleUpem import scale_upem
+from fontTools.ttLib.tables import otTables
 
 from _common import (
     ROOT,
@@ -53,7 +59,9 @@ from _common import (
     StyleSpec,
     load_config,
     make_logger,
+    resolve_variants,
     set_name_records,
+    variant_ids,
 )
 
 log = make_logger("build")
@@ -147,7 +155,7 @@ def rewrite_names(font: TTFont, family: str, style: StyleSpec, cfg: dict) -> Non
 # ---------------------------------------------------------------------------
 
 
-def set_style_bits(font: TTFont, style: StyleSpec, vendor_id: str) -> None:
+def set_style_bits(font: TTFont, style: StyleSpec, vendor_id: str, fixed_pitch: bool) -> None:
     """Populate the style-related fields in OS/2, head, and post."""
     os2 = font["OS/2"]
     head = font["head"]
@@ -188,7 +196,7 @@ def set_style_bits(font: TTFont, style: StyleSpec, vendor_id: str) -> None:
     head.macStyle = ms
 
     post.italicAngle = float(style.italic_angle)
-    post.isFixedPitch = 1
+    post.isFixedPitch = 1 if fixed_pitch else 0
 
 
 # ---------------------------------------------------------------------------
@@ -232,6 +240,253 @@ def assert_upm(font, expected=TARGET_UPM):
         raise RuntimeError(
             f"unitsPerEm={upm}, expected {expected}. Use fontTools.ttLib.scaleUpem before merging."
         )
+
+
+# ---------------------------------------------------------------------------
+# ligature grafting - FiraCode's calt machinery for the italic styles
+# ---------------------------------------------------------------------------
+
+# IBM Plex Mono ships without programming ligatures, so the italic styles
+# would lose FiraCode's signature feature precisely where it matters most
+# (editor comments are usually italic). We transplant the donor's ``calt``
+# lookups into the italic font. Because both fonts use AGL glyph names for
+# ASCII ("equal", "hyphen", ...), the copied rules bind by name to the
+# italic outlines already in the target; only the donor-specific glyphs
+# (``hyphen_hyphen.liga`` and friends) are appended. Ligature glyphs keep
+# their upright shapes - arrows and operators are conventionally not
+# slanted even in italic text.
+
+
+def _walk_ot_tree(obj, visit, _seen: set[int] | None = None) -> None:
+    """Depth-first walk over an otTables tree, calling ``visit`` on each node.
+
+    Containers (list/tuple/dict) are descended into transparently; every other
+    node is passed to ``visit`` first, and a True return prunes the subtree
+    below it. ``_seen`` guards against shared or cyclic sub-objects.
+    """
+    if _seen is None:
+        _seen = set()
+    if id(obj) in _seen:
+        return
+    _seen.add(id(obj))
+    if isinstance(obj, (list, tuple)):
+        for v in obj:
+            _walk_ot_tree(v, visit, _seen)
+        return
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            _walk_ot_tree(k, visit, _seen)
+            _walk_ot_tree(v, visit, _seen)
+        return
+    if visit(obj):
+        return
+    if hasattr(obj, "__dict__"):
+        for v in vars(obj).values():
+            _walk_ot_tree(v, visit, _seen)
+
+
+def _collect_glyph_refs(root, known: set[str], found: set[str]) -> None:
+    """Collect every glyph name referenced anywhere inside an otTables tree."""
+
+    def visit(node) -> bool:
+        if isinstance(node, str) and node in known:
+            found.add(node)
+        return False
+
+    _walk_ot_tree(root, visit)
+
+
+def _sort_coverages(root, gid_of) -> None:
+    """Re-sort every Coverage in a transplanted lookup by target glyph ID.
+
+    The OpenType spec requires coverage tables sorted by glyph ID (shapers
+    binary-search them). Donor coverages are ordered by donor GIDs, which
+    scramble when the lookups land in the target's glyph order. Wherever a
+    coverage has a parallel array (substitutes / rule sets), the parallel
+    array is reordered alongside it; bare coverages (context format 3, or
+    class-based format 2) are pure sets and are sorted independently.
+    """
+
+    def visit(node) -> bool:
+        if isinstance(node, otTables.Coverage):
+            node.glyphs = sorted(node.glyphs, key=gid_of)
+            return True
+
+        if isinstance(node, otTables.SingleSubst):
+            if hasattr(node, "mapping"):
+                # Programmatic form (no Coverage table yet; compile derives one
+                # from mapping iteration order) - sort the mapping by target GID.
+                node.mapping = dict(sorted(node.mapping.items(), key=lambda kv: gid_of(kv[0])))
+                return True
+            cov = node.Coverage
+            if node.Format == 2:
+                pairs = sorted(
+                    zip(cov.glyphs, node.Substitute, strict=True), key=lambda p: gid_of(p[0])
+                )
+                cov.glyphs = [g for g, _ in pairs]
+                node.Substitute = [s for _, s in pairs]
+            else:  # Format 1 applies a constant delta - coverage order-independent.
+                cov.glyphs = sorted(cov.glyphs, key=gid_of)
+            return True
+
+        if isinstance(node, otTables.LigatureSubst):
+            pairs = sorted(
+                zip(node.Coverage.glyphs, node.LigatureSet, strict=True),
+                key=lambda p: gid_of(p[0]),
+            )
+            node.Coverage.glyphs = [g for g, _ in pairs]
+            node.LigatureSet = [s for _, s in pairs]
+            return True
+
+        # Context / ChainContext format 1: coverage order parallels the rule sets.
+        ruleset_attr = next(
+            (
+                a
+                for a in ("ChainSubRuleSet", "SubRuleSet", "ChainPosRuleSet", "PosRuleSet")
+                if hasattr(node, a)
+            ),
+            None,
+        )
+        if ruleset_attr and hasattr(node, "Coverage"):
+            cov = node.Coverage
+            rulesets = getattr(node, ruleset_attr)
+            pairs = sorted(zip(cov.glyphs, rulesets, strict=True), key=lambda p: gid_of(p[0]))
+            cov.glyphs = [g for g, _ in pairs]
+            setattr(node, ruleset_attr, [r for _, r in pairs])
+            return True
+
+        return False
+
+    _walk_ot_tree(root, visit)
+
+
+def _walk_nested_index_records(root, fn) -> None:
+    """Apply ``fn`` to every nested-lookup record (SubstLookupRecord etc.) in a lookup tree.
+
+    Nested-lookup records are the only otTables nodes with an integer
+    ``LookupListIndex`` attribute (a ``Feature``'s attribute of the same name
+    is a list and is skipped). The records hold no glyph data themselves -
+    their target lookups live in the font's LookupList - which is exactly why
+    transplanted rules must have these indices rewritten.
+    """
+
+    def visit(node) -> bool:
+        if isinstance(getattr(node, "LookupListIndex", None), int):
+            fn(node)
+        return False
+
+    _walk_ot_tree(root, visit)
+
+
+def _nested_lookup_indices(lookup) -> set[int]:
+    """Donor LookupList indices referenced by this lookup's nested-lookup records."""
+    found: set[int] = set()
+    _walk_nested_index_records(lookup, lambda rec: found.add(rec.LookupListIndex))
+    return found
+
+
+def graft_ligatures(target: TTFont, donor_path: Path) -> tuple[int, int]:
+    """Transplant the donor's ``calt`` ligature machinery into ``target``.
+
+    Returns ``(glyphs_appended, lookups_added)``. Steps:
+
+    1. Collect the donor's ``calt`` lookups plus the transitive closure of
+       their nested-lookup references (chained-context rules invoke the actual
+       substitutions through nested lookups), and deep-copy them.
+    2. Append every donor glyph those lookups reference that the target lacks
+       (the ``.liga`` / ``.seq`` / ``.spacer`` ligature machinery). Glyphs the
+       two fonts share by name (all of ASCII) are NOT copied, so rules match
+       the target's own italic outlines.
+    3. Re-sort coverages by target glyph ID (spec requirement: shapers
+       binary-search coverage tables).
+    4. Append the lookups to the target's GSUB, rewrite nested lookup indices
+       to their new positions, and register one ``calt`` feature on every
+       script/language system.
+
+    Requires the target to already be at the donor's UPM (scaleUpem first).
+    """
+    donor = TTFont(str(donor_path))
+    donor_names = set(donor.getGlyphOrder())
+    donor_gsub = donor["GSUB"].table
+    donor_lookups = donor_gsub.LookupList.Lookup
+
+    top_level = sorted(
+        {
+            i
+            for fr in donor_gsub.FeatureList.FeatureRecord
+            if fr.FeatureTag == "calt"
+            for i in fr.Feature.LookupListIndex
+        }
+    )
+    all_indices = set(top_level)
+    frontier = list(top_level)
+    while frontier:
+        nested: set[int] = set()
+        for i in frontier:
+            nested |= _nested_lookup_indices(donor_lookups[i])
+        frontier = sorted(nested - all_indices)
+        all_indices |= nested
+
+    ordered = sorted(all_indices)
+    lookups = [copy.deepcopy(donor_lookups[i]) for i in ordered]
+    remap = {old: pos for pos, old in enumerate(ordered)}
+
+    refs: set[str] = set()
+    for lk in lookups:
+        _collect_glyph_refs(lk, donor_names, refs)
+
+    target_names = set(target.getGlyphOrder())
+    target_glyf, donor_glyf = target["glyf"], donor["glyf"]
+    target_hmtx, donor_hmtx = target["hmtx"], donor["hmtx"]
+    appended = 0
+    for name in donor.getGlyphOrder():
+        if name not in refs or name in target_names:
+            continue
+        # glyf.__setitem__ also appends to the glyph order, and hmtx is a
+        # plain dict - no explicit setGlyphOrder needed.
+        target_glyf[name] = copy.deepcopy(donor_glyf[name])
+        target_hmtx[name] = donor_hmtx[name]
+        appended += 1
+    donor.close()
+    # The reverse glyph map may have been cached (e.g. by scaleUpem) before
+    # the new glyphs were appended; force a rebuild so GSUB compile finds them.
+    gid_of = target.getReverseGlyphMap(rebuild=True).__getitem__
+
+    for lk in lookups:
+        _sort_coverages(lk, gid_of)
+
+    target_gsub = target["GSUB"].table
+    lookup_list = target_gsub.LookupList.Lookup
+    base = len(lookup_list)
+    lookup_list.extend(lookups)
+    target_gsub.LookupList.LookupCount = len(lookup_list)
+    for lk in lookups:
+        _walk_nested_index_records(
+            lk,
+            lambda rec: setattr(rec, "LookupListIndex", base + remap[rec.LookupListIndex]),
+        )
+
+    feature = otTables.Feature()
+    feature.FeatureParams = None
+    feature.LookupListIndex = [base + remap[i] for i in top_level]
+    feature.LookupCount = len(feature.LookupListIndex)
+    record = otTables.FeatureRecord()
+    record.FeatureTag = "calt"
+    record.Feature = feature
+    target_gsub.FeatureList.FeatureRecord.append(record)
+    target_gsub.FeatureList.FeatureCount = len(target_gsub.FeatureList.FeatureRecord)
+    feature_index = target_gsub.FeatureList.FeatureCount - 1
+    for script_record in target_gsub.ScriptList.ScriptRecord:
+        lang_systems = [script_record.Script.DefaultLangSys] + [
+            lr.LangSys for lr in script_record.Script.LangSysRecord
+        ]
+        for lang_sys in lang_systems:
+            if lang_sys is None:
+                continue
+            lang_sys.FeatureIndex.append(feature_index)
+            lang_sys.FeatureCount = len(lang_sys.FeatureIndex)
+
+    return appended, len(ordered)
 
 
 # ---------------------------------------------------------------------------
@@ -352,14 +607,16 @@ def build_one(
     cfg: dict,
     *,
     normalize_widths: bool,
+    fixed_pitch: bool,
     scale_to_target_upm: bool = False,
     align_metrics: bool = False,
+    ligature_donor: Path | None = None,
 ) -> None:
     """Build one output TTF from one source TTF.
 
-    ``scale_to_target_upm`` and ``align_metrics`` are only enabled for the
-    Plex italic styles; FiraCode NF Regular/Bold are passed through with
-    their original geometry and hinting intact.
+    ``scale_to_target_upm``, ``align_metrics``, and ``ligature_donor`` are only
+    enabled for the Plex italic styles; FiraCode NF Regular/Bold are passed
+    through with their original geometry, hinting, and ligatures intact.
     """
     log(f"build {style.subfamily:11s}  <- {src_ttf.name}")
     font = TTFont(str(src_ttf))
@@ -379,12 +636,18 @@ def build_one(
         if n:
             log(f"  normalized advance for {n} glyphs -> {TARGET_ADVANCE}")
 
+    if ligature_donor is not None:
+        n_glyphs, n_lookups = graft_ligatures(font, ligature_donor)
+        log(
+            f"  grafted calt ligatures from {ligature_donor.name}: {n_lookups} lookups, {n_glyphs} glyphs"
+        )
+
     if align_metrics:
         align_vertical_metrics(font)
         log("  aligned vertical metrics to FiraCode NF line box")
 
     rewrite_names(font, family=cfg["family_name"], style=style, cfg=cfg)
-    set_style_bits(font, style, cfg["vendor_id"])
+    set_style_bits(font, style, cfg["vendor_id"], fixed_pitch)
     _apply_source_date_epoch(font)
 
     out_ttf.parent.mkdir(parents=True, exist_ok=True)
@@ -392,16 +655,18 @@ def build_one(
     log(f"  -> {out_ttf.relative_to(ROOT)}")
 
 
-def build_variant(variant_id: str, sources_dir: Path, out_dir: Path, cfg: dict) -> None:
+def build_variant(variant: dict, sources_dir: Path, out_dir: Path, cfg: dict) -> None:
     """Produce four TTFs for one variant (``standard`` / ``mono`` / ``propo``).
 
     Per-variant output subdirectory is created here so Stage 2 can patch
     the italics in place.
     """
+    variant_id = variant["id"]
     log(f"=== variant: {variant_id} ===")
     fc_dir = sources_dir / "firacode-nerd" / variant_id
     plex_dir = sources_dir / "plex-mono"
     fc_basename = FIRACODE_BASENAMES[variant_id]
+    fixed_pitch = variant["fixed_pitch"]
 
     family = cfg["family_name"]
     variant_out = out_dir / variant_id
@@ -416,16 +681,23 @@ def build_variant(variant_id: str, sources_dir: Path, out_dir: Path, cfg: dict) 
             STYLES[style_name],
             cfg,
             normalize_widths=False,
+            fixed_pitch=fixed_pitch,
         )
 
     # Italic + BoldItalic: take the Plex Mono italic shapes; scale UPM up
     # to match FiraCode NF, normalise widths so any non-1200 advances are
-    # re-centred, and pin the vertical metrics to FiraCode's line box so
-    # italics do not look squashed next to the upright styles. Stage 2
+    # re-centred, graft FiraCode's calt ligatures in (Plex has none), and
+    # pin the vertical metrics to FiraCode's line box so italics do not look
+    # squashed next to the upright styles. The ligature donor is the matching
+    # FiraCode weight so BoldItalic ligatures get bold strokes. Stage 2
     # injects icons afterwards.
     plex_filenames = {
         "Italic": "IBMPlexMono-Italic.ttf",
         "BoldItalic": "IBMPlexMono-BoldItalic.ttf",
+    }
+    ligature_donors = {
+        "Italic": fc_dir / f"{fc_basename}-Regular.ttf",
+        "BoldItalic": fc_dir / f"{fc_basename}-Bold.ttf",
     }
     for style_name, plex_filename in plex_filenames.items():
         build_one(
@@ -434,16 +706,21 @@ def build_variant(variant_id: str, sources_dir: Path, out_dir: Path, cfg: dict) 
             STYLES[style_name],
             cfg,
             normalize_widths=True,
+            fixed_pitch=fixed_pitch,
             scale_to_target_upm=True,
             align_metrics=True,
+            ligature_donor=ligature_donors[style_name],
         )
 
 
 def main() -> int:
+    cfg = load_config()
+    ids = variant_ids(cfg)
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--variant",
-        choices=["standard", "mono", "propo", "all"],
+        choices=[*ids, "all"],
         default="all",
         help="Which Nerd Font variant to build.",
     )
@@ -459,13 +736,11 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    cfg = load_config()
     sources_dir = Path(args.sources)
     out_dir = Path(args.out)
 
-    variants = ["standard", "mono", "propo"] if args.variant == "all" else [args.variant]
-    for v in variants:
-        build_variant(v, sources_dir, out_dir, cfg)
+    for variant in resolve_variants(cfg, args.variant):
+        build_variant(variant, sources_dir, out_dir, cfg)
 
     log("Stage 1 complete.")
     return 0

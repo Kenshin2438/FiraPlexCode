@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -40,12 +41,25 @@ def load_config(path: Path = CONFIG_PATH) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def variant_ids(cfg: dict[str, Any]) -> list[str]:
+    """Ordered list of variant ids from `config.json` (the single source of truth)."""
+    return [v["id"] for v in cfg["variants"]]
+
+
+def resolve_variants(cfg: dict[str, Any], selected: str) -> list[dict[str, Any]]:
+    """Resolve a ``--variant`` CLI argument (an id or ``"all"``) to variant entries."""
+    variants: list[dict[str, Any]] = cfg["variants"]
+    if selected == "all":
+        return variants
+    return [v for v in variants if v["id"] == selected]
+
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
 
 
-def make_logger(prefix: str):
+def make_logger(prefix: str) -> Callable[[str], None]:
     """Return a `log(msg)` callable that prefixes stderr lines with `[prefix]`.
 
     Each script calls `log = make_logger("build")` etc. so its messages remain
