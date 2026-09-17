@@ -1,6 +1,6 @@
 [project]
 name = "firaplexcode"
-version = "1.0.0"
+version = "1.1.0"
 description = "Build pipeline that merges FiraCode Nerd Font with IBM Plex Mono italics into a coherent 4-style family."
 readme = "README.md"
 requires-python = ">=3.10"
